@@ -1,0 +1,18 @@
+services:
+  inverness:
+    build: .
+    ports:
+      - "2718:2718"   # Marimo
+      - "4200:4200"   # Prefect
+      - "5000:5000"   # MLflow
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./flows:/app/flows
+      - ./config:/app/config
+      - inverness-data:/data
+      - inverness-mlruns:/mlruns
+    restart: unless-stopped
+
+volumes:
+  inverness-data:
+  inverness-mlruns:
