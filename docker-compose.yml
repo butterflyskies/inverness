@@ -9,10 +9,6 @@ services:
       - ./notebooks:/app/notebooks
       - ./flows:/app/flows
       - ./config:/app/config
-      - inverness-data:/data
-      - inverness-mlruns:/mlruns
+      - ./data:/data
+      - ./mlruns:/mlruns
     restart: unless-stopped
-
-volumes:
-  inverness-data:
-  inverness-mlruns:
