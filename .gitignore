@@ -1,0 +1,29 @@
+# Data (lives on volume mount, not in repo)
+/data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# MLflow
+/mlruns/
+/mlartifacts/
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
