@@ -11,7 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-RUN mkdir -p /data/bronze /data/silver /data/gold /mlruns
+RUN useradd -m -s /bin/bash inverness \
+    && mkdir -p /data/bronze /data/silver /data/gold /mlruns /app \
+    && chown -R inverness:inverness /data /mlruns /app
 
 ENV MLFLOW_TRACKING_URI=file:///mlruns
 ENV PREFECT_HOME=/app/config/prefect
@@ -21,7 +23,9 @@ WORKDIR /app
 
 EXPOSE 2718 4200 5000
 
-COPY entrypoint.sh /app/entrypoint.sh
+COPY --chown=inverness:inverness entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
+
+USER inverness
 
 ENTRYPOINT ["/app/entrypoint.sh"]
