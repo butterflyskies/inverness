@@ -12,7 +12,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 RUN useradd -m -s /bin/bash inverness \
-    && mkdir -p /data/bronze /data/silver /data/gold /mlruns /app \
+    && mkdir -p /data/bronze /data/silver /data/gold /mlruns /app/config/prefect \
     && chown -R inverness:inverness /data /mlruns /app
 
 ENV MLFLOW_TRACKING_URI=file:///mlruns
