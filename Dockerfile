@@ -15,8 +15,9 @@ RUN useradd -m -s /bin/bash inverness \
     && mkdir -p /data/bronze /data/silver /data/gold /mlruns /app /home/inverness/.prefect \
     && chown -R inverness:inverness /data /mlruns /app /home/inverness/.prefect
 
-ENV MLFLOW_TRACKING_URI=file:///mlruns
+ENV MLFLOW_TRACKING_URI=sqlite:///mlruns/mlflow.db
 ENV PREFECT_HOME=/home/inverness/.prefect
+ENV PREFECT_UI_STATIC_DIRECTORY=/home/inverness/.prefect/ui
 ENV MARIMO_HOST=0.0.0.0
 
 WORKDIR /app
