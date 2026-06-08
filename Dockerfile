@@ -12,11 +12,11 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 RUN useradd -m -s /bin/bash inverness \
-    && mkdir -p /data/bronze /data/silver /data/gold /mlruns /app/config/prefect \
-    && chown -R inverness:inverness /data /mlruns /app
+    && mkdir -p /data/bronze /data/silver /data/gold /mlruns /app /home/inverness/.prefect \
+    && chown -R inverness:inverness /data /mlruns /app /home/inverness/.prefect
 
 ENV MLFLOW_TRACKING_URI=file:///mlruns
-ENV PREFECT_HOME=/app/config/prefect
+ENV PREFECT_HOME=/home/inverness/.prefect
 ENV MARIMO_HOST=0.0.0.0
 
 WORKDIR /app

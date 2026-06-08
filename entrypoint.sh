@@ -4,7 +4,7 @@ set -e
 echo "Starting Inverness stack..."
 
 # Ensure writable directories exist (volume mounts may be empty)
-mkdir -p /app/config/prefect /mlruns
+mkdir -p /home/inverness/.prefect /mlruns
 
 # Start MLflow tracking server (background)
 mlflow server \
