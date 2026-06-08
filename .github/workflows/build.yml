@@ -1,0 +1,90 @@
+---
+name: Build and test container
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "LICENSE-*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  IMAGE_NAME: inverness
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build image
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create data directories
+        run: mkdir -p data/bronze data/silver data/gold mlruns
+
+      - name: Smoke test
+        run: |
+          # Start the container in the background
+          docker run -d \
+            --name inverness-test \
+            -p 2718:2718 \
+            -p 4200:4200 \
+            -p 5000:5000 \
+            -v "$PWD/notebooks:/app/notebooks" \
+            -v "$PWD/flows:/app/flows" \
+            -v "$PWD/config:/app/config" \
+            -v "$PWD/data:/data" \
+            -v "$PWD/mlruns:/mlruns" \
+            ${{ env.IMAGE_NAME }}:test
+
+          # Wait for services to start (max 60s)
+          for port in 5000 4200 2718; do
+            echo "Waiting for service on :${port}..."
+            for i in $(seq 1 60); do
+              if curl -sf "http://localhost:${port}/" > /dev/null 2>&1; then
+                echo "  :${port} is ready"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "  :${port} failed to start"
+                docker logs inverness-test
+                exit 1
+              fi
+              sleep 1
+            done
+          done
+
+          echo "All services are up."
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f inverness-test 2>/dev/null || true

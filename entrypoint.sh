@@ -3,9 +3,13 @@ set -e
 
 echo "Starting Inverness stack..."
 
+# Ensure writable directories exist (volume mounts may be empty)
+mkdir -p /home/inverness/.prefect/ui /mlruns
+
 # Start MLflow tracking server (background)
 mlflow server \
-    --backend-store-uri file:///mlruns \
+    --backend-store-uri sqlite:///mlruns/mlflow.db \
+    --default-artifact-root /mlruns/artifacts \
     --host 0.0.0.0 \
     --port 5000 &
 echo "MLflow tracking server starting on :5000"
