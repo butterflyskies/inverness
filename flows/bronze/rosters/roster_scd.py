@@ -8,6 +8,7 @@ Silver: roster_current.parquet (latest state) + roster_history.parquet (full SCD
 from datetime import date
 from pathlib import Path
 
+import json
 import httpx
 import polars as pl
 from prefect import flow, get_run_logger, task
@@ -22,7 +23,8 @@ HISTORY_FILE = SILVER_ROOT / "roster_history.parquet"
 
 @task(retries=2, retry_delay_seconds=10)
 async def fetch_teams(client: httpx.AsyncClient) -> dict:
-    """Returns MLB teams as dict."""
+    """Fetches the list of active MLB teams from the Stats API. Returns the raw 
+    JSON response."""
     resp = await client.get(f"{MLB_BASE}/teams", params={"sportId": 1})
     resp.raise_for_status()
     return resp.json()
@@ -38,10 +40,7 @@ async def fetch_roster(client: httpx.AsyncClient, team_id: int) -> dict | None:
 
     Returns:
         Roster json from endpoint.
-
-    Raises:
-        httpx.HTTPStatusError: Logs warning, returns None.
-        httpx.RequestError: Logs warning, returns None.
+        Returns None and logs warning on HTTPStatusError or RequestError.
     """
     logger = get_run_logger()
     try:
@@ -76,14 +75,9 @@ def write_bronze(teams_data: dict, rosters: dict[int, dict], run_date: date) -> 
         For example:
 
             /data/bronze/rosters/2026-05-01
-
-    Raises:
-        None
     """
     day_dir = BRONZE_ROOT / run_date.isoformat()
     day_dir.mkdir(parents=True, exist_ok=True)
-
-    import json
 
     (day_dir / "teams.json").write_text(json.dumps(teams_data, indent=2))
     for team_id, roster_data in rosters.items():
@@ -223,7 +217,8 @@ def apply_scd2(today_df: pl.DataFrame, run_date: date) -> pl.DataFrame:
 
 @task
 def write_silver(scd_df: pl.DataFrame) -> None:
-    """Opens SCD2 player_id tables and appends new/updated records."""
+    """Writes SCD2 results to silver layer. Idempotent — re-running for the same 
+    date replaces previous output."""
     logger = get_run_logger()
     SILVER_ROOT.mkdir(parents=True, exist_ok=True)
 
