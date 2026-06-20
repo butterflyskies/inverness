@@ -27,3 +27,6 @@ Thumbs.db
 
 # Environment
 .env
+
+# Compose Override
+*.override.yaml
