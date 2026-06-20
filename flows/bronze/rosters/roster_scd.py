@@ -100,7 +100,7 @@ def flatten_rosters(
             rows.append(
                 {
                     "player_id": entry["person"]["id"],
-                    "full_name": entry["person"]["fullName"],
+                    "player_name": entry["person"]["fullName"],
                     "team_id": team_id,
                     "team_name": team_lookup.get(team_id, f"Unknown ({team_id})"),
                     "position": entry["position"]["abbreviation"],
@@ -111,7 +111,7 @@ def flatten_rosters(
 
     schema = {
         "player_id": pl.Int64,
-        "full_name": pl.Utf8,
+        "player_name": pl.Utf8,
         "team_id": pl.Int64,
         "team_name": pl.Utf8,
         "position": pl.Utf8,
