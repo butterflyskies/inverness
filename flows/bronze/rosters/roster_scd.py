@@ -46,7 +46,7 @@ async def fetch_roster(client: httpx.AsyncClient, team_id: int) -> dict | None:
     try:
         resp = await client.get(
             f"{MLB_BASE}/teams/{team_id}/roster",
-            params={"rosterType": "active"},
+            params={"rosterType": "fullRoster"},
         )
         resp.raise_for_status()
         return resp.json()
