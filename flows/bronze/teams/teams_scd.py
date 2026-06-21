@@ -207,7 +207,7 @@ def write_silver(scd_df: pl.DataFrame) -> None:
         if today is not None:
             existing = existing.filter(
                 (pl.col("effective_from") != today)
-                & (pl.col("effective_to") != today)
+                & (pl.col("effective_to").is_null() | (pl.col("effective_to") != today))
             )
         combined = pl.concat([existing, scd_df], how="diagonal_relaxed")
     else:

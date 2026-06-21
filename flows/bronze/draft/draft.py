@@ -40,7 +40,6 @@ def check_bronze_changed(raw: dict, year: int) -> bool:
     """
     logger = get_run_logger()
     year_dir = BRONZE_ROOT / str(year)
-    bronze_file = year_dir / "draft.json"
     hash_file = year_dir / ".content_hash"
 
     new_hash = hashlib.sha256(

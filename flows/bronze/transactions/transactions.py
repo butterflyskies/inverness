@@ -82,22 +82,25 @@ def flatten_transactions(raw: dict) -> pl.DataFrame:
 
     rows = []
     for t in txns:
+        person = t.get("person")
+        if person is None:
+            continue
         from_team = t.get("fromTeam")
         to_team = t.get("toTeam")
         rows.append(
             {
                 "transaction_id": t["id"],
-                "player_id": t["person"]["id"],
-                "player_name": t["person"]["fullName"],
+                "player_id": person["id"],
+                "player_name": person.get("fullName"),
                 "from_team_id": from_team["id"] if from_team else None,
                 "from_team_name": from_team["name"] if from_team else None,
                 "to_team_id": to_team["id"] if to_team else None,
                 "to_team_name": to_team["name"] if to_team else None,
-                "date": t["date"],
-                "effective_date": t["effectiveDate"],
+                "date": t.get("date"),
+                "effective_date": t.get("effectiveDate"),
                 "resolution_date": t.get("resolutionDate"),
-                "type_code": t["typeCode"],
-                "type_desc": t["typeDesc"],
+                "type_code": t.get("typeCode"),
+                "type_desc": t.get("typeDesc"),
                 "description": t.get("description"),
             }
         )
