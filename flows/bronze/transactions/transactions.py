@@ -19,6 +19,11 @@ BRONZE_ROOT = Path("/data/bronze/transactions")
 SILVER_ROOT = Path("/data/silver/transactions")
 SILVER_FILE = SILVER_ROOT / "transactions.parquet"
 
+def _parse_date(val: str | None) -> date | None:
+    """Parse an ISO date string to a datetime.date, or None if absent."""
+    return date.fromisoformat(val) if val else None
+
+
 SCHEMA = {
     "transaction_id": pl.Int64,
     "player_id": pl.Int64,
@@ -97,9 +102,9 @@ def flatten_transactions(raw: dict) -> pl.DataFrame:
                 "from_team_name": from_team["name"] if from_team else None,
                 "to_team_id": to_team["id"] if to_team else None,
                 "to_team_name": to_team["name"] if to_team else None,
-                "date": t.get("date"),
-                "effective_date": t.get("effectiveDate"),
-                "resolution_date": t.get("resolutionDate"),
+                "date": _parse_date(t.get("date")),
+                "effective_date": _parse_date(t.get("effectiveDate")),
+                "resolution_date": _parse_date(t.get("resolutionDate")),
                 "type_code": t.get("typeCode"),
                 "type_desc": t.get("typeDesc"),
                 "description": t.get("description"),
