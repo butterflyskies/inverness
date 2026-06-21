@@ -1,8 +1,9 @@
 """
-Draft picks flow -- pull MLB draft data, maintain append-only event table.
+Draft picks flow -- pull MLB draft data, maintain upsert event table.
 
 Bronze: raw JSON from MLB Stats API, partitioned by year.
-Silver: draft_picks.parquet (append-only, deduplicated by round + pick_number + year).
+Silver: draft_picks.parquet (deduplicated by year + round + pick_number; re-runs
+replace existing rows with fresh data to pick up updated values like signing_bonus).
 """
 
 from datetime import date
@@ -24,6 +25,11 @@ MLB_BASE = "https://statsapi.mlb.com/api/v1"
 DEFAULT_BACKFILL_YEARS = 3
 
 
+def _content_hash(raw: dict) -> str:
+    """Compute a deterministic SHA-256 hash of a JSON-serialisable dict."""
+    return hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest()
+
+
 @task(retries=2, retry_delay_seconds=10)
 async def fetch_draft(client: httpx.AsyncClient, year: int) -> dict:
     """Fetch draft data for a given year from the MLB Stats API."""
@@ -42,9 +48,7 @@ def check_bronze_changed(raw: dict, year: int) -> bool:
     year_dir = BRONZE_ROOT / str(year)
     hash_file = year_dir / ".content_hash"
 
-    new_hash = hashlib.sha256(
-        json.dumps(raw, sort_keys=True).encode()
-    ).hexdigest()
+    new_hash = _content_hash(raw)
 
     if hash_file.exists():
         old_hash = hash_file.read_text().strip()
@@ -66,12 +70,9 @@ def write_bronze(raw: dict, year: int) -> Path:
     year_dir.mkdir(parents=True, exist_ok=True)
 
     bronze_file = year_dir / "draft.json"
-    bronze_file.write_text(json.dumps(raw, indent=2))
+    bronze_file.write_text(json.dumps(raw, indent=2, sort_keys=True))
 
-    content_hash = hashlib.sha256(
-        json.dumps(raw, sort_keys=True).encode()
-    ).hexdigest()
-    (year_dir / ".content_hash").write_text(content_hash)
+    (year_dir / ".content_hash").write_text(_content_hash(raw))
 
     return year_dir
 
@@ -137,10 +138,10 @@ def flatten_picks(raw: dict, year: int) -> pl.DataFrame:
 
 @task
 def write_silver(new_picks: pl.DataFrame) -> None:
-    """Append new picks to the silver parquet, deduplicating by (year, round, pick_number).
+    """Merge new picks into the silver parquet, deduplicating by (year, round, pick_number).
 
-    Append-only: existing rows are never modified. On re-run with the same data,
-    the dedup key prevents duplicates.
+    On re-runs, existing rows with matching keys are replaced by the fresh data
+    (e.g. to pick up updated signing_bonus values).
     """
     logger = get_run_logger()
 
@@ -177,7 +178,7 @@ def write_silver(new_picks: pl.DataFrame) -> None:
 
 @flow(
     name="draft-picks",
-    description="Pull MLB draft picks, maintain append-only event table in silver layer.",
+    description="Pull MLB draft picks, upsert into silver layer (dedup by year/round/pick).",
 )
 async def draft_picks(
     years: list[int] | None = None,

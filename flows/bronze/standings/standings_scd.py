@@ -57,11 +57,11 @@ def write_bronze(standings_data: dict, run_date: date) -> Path:
 def flatten_standings(standings_data: dict) -> pl.DataFrame:
     rows = []
     for record in standings_data.get("records", []):
-        division_id = record["division"]["id"]
+        division_id = record.get("division", {}).get("id")
         division_name = record.get("division", {}).get("name") or DIVISION_NAMES.get(
             division_id, f"Unknown ({division_id})"
         )
-        league_id = record["league"]["id"]
+        league_id = record.get("league", {}).get("id")
 
         for team in record.get("teamRecords", []):
             rows.append(
@@ -71,6 +71,7 @@ def flatten_standings(standings_data: dict) -> pl.DataFrame:
                     "division_id": division_id,
                     "division_name": division_name,
                     "league_id": league_id,
+                    "league_name": LEAGUE_NAMES.get(league_id, f"Unknown ({league_id})"),
                     "division_rank": team["divisionRank"],
                     "games_back": team["gamesBack"],
                     "wild_card_rank": team.get("wildCardRank"),
@@ -78,7 +79,7 @@ def flatten_standings(standings_data: dict) -> pl.DataFrame:
                     "wins": team["wins"],
                     "losses": team["losses"],
                     "winning_percentage": team["winningPercentage"],
-                    "streak": team["streak"]["streakCode"],
+                    "streak": team.get("streak", {}).get("streakCode"),
                 }
             )
 
@@ -88,6 +89,7 @@ def flatten_standings(standings_data: dict) -> pl.DataFrame:
         "division_id": pl.Int64,
         "division_name": pl.Utf8,
         "league_id": pl.Int64,
+        "league_name": pl.Utf8,
         "division_rank": pl.Utf8,
         "games_back": pl.Utf8,
         "wild_card_rank": pl.Utf8,
@@ -161,8 +163,7 @@ def apply_scd2(today_df: pl.DataFrame, run_date: date) -> pl.DataFrame:
         changed_mask = pl.lit(False)
         for col in TRACK_COLS:
             changed_mask = changed_mask | (
-                pl.col(col).cast(pl.Utf8).fill_null("__NULL__")
-                != pl.col(f"{col}_new").cast(pl.Utf8).fill_null("__NULL__")
+                pl.col(col).cast(pl.Utf8).ne_missing(pl.col(f"{col}_new").cast(pl.Utf8))
             )
         changed_ids = set(merged.filter(changed_mask)["team_id"].to_list())
     else:
@@ -202,10 +203,7 @@ def write_silver(scd_df: pl.DataFrame) -> None:
         existing = pl.read_parquet(HISTORY_FILE)
         today = scd_df["effective_from"].max()
         if today is not None:
-            existing = existing.filter(
-                (pl.col("effective_from") != today)
-                & (pl.col("effective_to").is_null() | (pl.col("effective_to") != today))
-            )
+            existing = existing.filter(pl.col("effective_from") != today)
         combined = pl.concat([existing, scd_df], how="diagonal_relaxed")
     else:
         combined = scd_df

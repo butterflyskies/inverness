@@ -50,17 +50,18 @@ async def fetch_transactions(
 
 
 @task
-def write_bronze(raw: dict, run_date: date) -> Path:
-    """Write raw JSON response to bronze layer, partitioned by date.
+def write_bronze(raw: dict, start_date: date, end_date: date) -> Path:
+    """Write raw JSON response to bronze layer, partitioned by date range.
 
     Args:
         raw: Raw JSON response from MLB Stats API.
-        run_date: ISO date for the partition directory.
+        start_date: Start of the fetched date range (inclusive).
+        end_date: End of the fetched date range (inclusive).
 
     Returns:
         Path to the directory where data was written.
     """
-    day_dir = BRONZE_ROOT / run_date.isoformat()
+    day_dir = BRONZE_ROOT / f"{start_date.isoformat()}_to_{end_date.isoformat()}"
     day_dir.mkdir(parents=True, exist_ok=True)
     (day_dir / "transactions.json").write_text(json.dumps(raw, indent=2))
     return day_dir
@@ -118,7 +119,7 @@ def write_silver(new_df: pl.DataFrame) -> None:
     logger = get_run_logger()
     SILVER_ROOT.mkdir(parents=True, exist_ok=True)
 
-    if not len(new_df):
+    if new_df.is_empty():
         logger.info("No transactions to write")
         return
 
@@ -164,7 +165,7 @@ async def transactions(
     txn_count = len(raw.get("transactions", []))
     logger.info("Fetched %d transactions", txn_count)
 
-    bronze_dir = write_bronze(raw, end_date)
+    bronze_dir = write_bronze(raw, start_date, end_date)
     logger.info("Bronze written to %s", bronze_dir)
 
     df = flatten_transactions(raw)

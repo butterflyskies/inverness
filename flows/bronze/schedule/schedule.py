@@ -58,26 +58,34 @@ def flatten_schedule(schedule_data: dict) -> pl.DataFrame:
     Extracts one row per game with the columns required for the silver table.
     The rescheduled flag is set to False here; apply_type1 handles detection.
     """
+    logger = get_run_logger()
     rows = []
     for date_entry in schedule_data.get("dates", []):
         for game in date_entry.get("games", []):
-            rows.append(
-                {
-                    "game_pk": game["gamePk"],
-                    "game_date": game["gameDate"],
-                    "game_type": game["gameType"],
-                    "status": game["status"]["detailedState"],
-                    "home_team_id": game["teams"]["home"]["team"]["id"],
-                    "home_team_name": game["teams"]["home"]["team"]["name"],
-                    "away_team_id": game["teams"]["away"]["team"]["id"],
-                    "away_team_name": game["teams"]["away"]["team"]["name"],
-                    "home_score": game["teams"]["home"].get("score"),
-                    "away_score": game["teams"]["away"].get("score"),
-                    "venue_id": game["venue"]["id"],
-                    "venue_name": game["venue"]["name"],
-                    "rescheduled": False,
-                }
-            )
+            try:
+                teams = game.get("teams", {})
+                home = teams.get("home", {})
+                away = teams.get("away", {})
+                venue = game.get("venue", {})
+                rows.append(
+                    {
+                        "game_pk": game["gamePk"],
+                        "game_date": game.get("gameDate"),
+                        "game_type": game.get("gameType"),
+                        "status": game.get("status", {}).get("detailedState"),
+                        "home_team_id": home.get("team", {}).get("id"),
+                        "home_team_name": home.get("team", {}).get("name"),
+                        "away_team_id": away.get("team", {}).get("id"),
+                        "away_team_name": away.get("team", {}).get("name"),
+                        "home_score": home.get("score"),
+                        "away_score": away.get("score"),
+                        "venue_id": venue.get("id"),
+                        "venue_name": venue.get("name"),
+                        "rescheduled": False,
+                    }
+                )
+            except (KeyError, TypeError) as exc:
+                logger.warning("Skipping malformed game entry: %s", exc)
 
     schema = {
         "game_pk": pl.Int64,

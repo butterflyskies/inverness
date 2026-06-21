@@ -160,8 +160,7 @@ def apply_scd2(today_df: pl.DataFrame, run_date: date) -> pl.DataFrame:
         changed_mask = pl.lit(False)
         for col in TRACK_COLS:
             changed_mask = changed_mask | (
-                pl.col(col).cast(pl.Utf8).fill_null("__NULL__")
-                != pl.col(f"{col}_new").cast(pl.Utf8).fill_null("__NULL__")
+                pl.col(col).cast(pl.Utf8).ne_missing(pl.col(f"{col}_new").cast(pl.Utf8))
             )
         changed_ids = set(
             merged.filter(changed_mask)["venue_id"].to_list()
@@ -206,13 +205,13 @@ def write_silver(scd_df: pl.DataFrame) -> None:
 
     if HISTORY_FILE.exists():
         existing = pl.read_parquet(HISTORY_FILE)
-        # Remove any rows from today's run (idempotency on re-run)
+        # Remove any rows from today's run (idempotency on re-run):
+        # drop rows whose effective_from matches today and re-append the
+        # fresh SCD output (rows with effective_to == today from prior
+        # runs are legitimately closed and should be preserved)
         today = scd_df["effective_from"].max()
         if today is not None:
-            existing = existing.filter(
-                (pl.col("effective_from") != today)
-                & (pl.col("effective_to").is_null() | (pl.col("effective_to") != today))
-            )
+            existing = existing.filter(pl.col("effective_from") != today)
         combined = pl.concat([existing, scd_df], how="diagonal_relaxed")
     else:
         combined = scd_df
@@ -235,7 +234,7 @@ async def venues_scd(run_date: date | None = None):
         teams_data = await fetch_venues(client)
 
     teams = teams_data.get("teams", [])
-    venues_seen = {t["venue"]["id"] for t in teams if "venue" in t}
+    venues_seen = {t["venue"].get("id") for t in teams if "venue" in t} - {None}
     logger.info("Found %d unique venues across %d teams", len(venues_seen), len(teams))
 
     bronze_dir = write_bronze(teams_data, run_date)

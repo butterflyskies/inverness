@@ -88,7 +88,7 @@ def write_bronze(teams_data: dict, rosters: dict[int, dict], run_date: date) -> 
 
 @task
 def flatten_rosters(
-    teams_data: dict, rosters: dict[int, dict], run_date: date
+    teams_data: dict, rosters: dict[int, dict]
 ) -> pl.DataFrame:
     """Flattens roster data and returns dataframe for SCD2 comparison."""
     team_lookup = {t["id"]: t["name"] for t in teams_data.get("teams", [])}
@@ -97,15 +97,21 @@ def flatten_rosters(
         if roster_data is None:
             continue
         for entry in roster_data.get("roster", []):
+            person = entry.get("person", {})
+            position = entry.get("position", {})
+            status = entry.get("status", {})
+            player_id = person.get("id")
+            if player_id is None:
+                continue
             rows.append(
                 {
-                    "player_id": entry["person"]["id"],
-                    "player_name": entry["person"]["fullName"],
+                    "player_id": player_id,
+                    "player_name": person.get("fullName"),
                     "team_id": team_id,
                     "team_name": team_lookup.get(team_id, f"Unknown ({team_id})"),
-                    "position": entry["position"]["abbreviation"],
+                    "position": position.get("abbreviation"),
                     "jersey_number": entry.get("jerseyNumber"),
-                    "status": entry["status"]["description"],
+                    "status": status.get("description"),
                 }
             )
 
@@ -129,13 +135,20 @@ TRACK_COLS = ["team_id", "team_name", "position", "jersey_number", "status"]
 
 
 @task
-def apply_scd2(today_df: pl.DataFrame, run_date: date) -> pl.DataFrame:
+def apply_scd2(
+    today_df: pl.DataFrame,
+    run_date: date,
+    fetched_team_ids: set[int] | None = None,
+) -> pl.DataFrame:
     """Applies SCD2 to compact roster data, logging only changes.
     Read more: https://en.wikipedia.org/wiki/Slowly_changing_dimension
 
     Args:
         today_df: output of flatten_rosters.
         run_date: ISO date of the invoking flow, defaults to today when None.
+        fetched_team_ids: set of team IDs that were successfully fetched.
+            Players from unfetched teams are not counted as removed, preventing
+            spurious SCD2 closures from transient fetch failures.
     Returns:
         A dataframe containing a complete list of player_ids with effective
         dates and assignments as of run_date.
@@ -159,7 +172,25 @@ def apply_scd2(today_df: pl.DataFrame, run_date: date) -> pl.DataFrame:
     today_ids = set(today_df["player_id"].to_list())
 
     new_ids = today_ids - prev_ids
-    removed_ids = prev_ids - today_ids
+    candidate_removed = prev_ids - today_ids
+
+    # Only count a player as removed if their previous team was successfully
+    # fetched. Players from unfetched teams stay in unchanged to avoid
+    # spurious closures from transient API failures.
+    if fetched_team_ids is not None:
+        prev_team_map = dict(
+            zip(
+                prev_current["player_id"].to_list(),
+                prev_current["team_id"].to_list(),
+            )
+        )
+        removed_ids = {
+            pid for pid in candidate_removed
+            if prev_team_map.get(pid) in fetched_team_ids
+        }
+    else:
+        removed_ids = candidate_removed
+
     continuing_ids = prev_ids & today_ids
 
     logger.info(
@@ -185,8 +216,7 @@ def apply_scd2(today_df: pl.DataFrame, run_date: date) -> pl.DataFrame:
         changed_mask = pl.lit(False)
         for col in TRACK_COLS:
             changed_mask = changed_mask | (
-                pl.col(col).cast(pl.Utf8).fill_null("__NULL__")
-                != pl.col(f"{col}_new").cast(pl.Utf8).fill_null("__NULL__")
+                pl.col(col).cast(pl.Utf8).ne_missing(pl.col(f"{col}_new").cast(pl.Utf8))
             )
         changed_ids = set(
             merged.filter(changed_mask)["player_id"].to_list()
@@ -228,14 +258,12 @@ def write_silver(scd_df: pl.DataFrame) -> None:
     if HISTORY_FILE.exists():
         existing = pl.read_parquet(HISTORY_FILE)
         # Remove any rows from today's run (idempotency on re-run):
-        # drop all rows whose effective_from or effective_to matches today
-        # and re-append the fresh SCD output
+        # drop rows whose effective_from matches today and re-append the
+        # fresh SCD output (rows with effective_to == today from prior
+        # runs are legitimately closed and should be preserved)
         today = scd_df["effective_from"].max()
         if today is not None:
-            existing = existing.filter(
-                (pl.col("effective_from") != today)
-                & (pl.col("effective_to").is_null() | (pl.col("effective_to") != today))
-            )
+            existing = existing.filter(pl.col("effective_from") != today)
         combined = pl.concat([existing, scd_df], how="diagonal_relaxed")
     else:
         combined = scd_df
@@ -270,10 +298,10 @@ async def roster_scd(run_date: date | None = None):
     bronze_dir = write_bronze(teams_data, rosters, run_date)
     logger.info("Bronze written to %s", bronze_dir)
 
-    today_df = flatten_rosters(teams_data, rosters, run_date)
+    today_df = flatten_rosters(teams_data, rosters)
     logger.info("Flattened %d roster entries", len(today_df))
 
-    scd_df = apply_scd2(today_df, run_date)
+    scd_df = apply_scd2(today_df, run_date, fetched_team_ids=set(rosters.keys()))
     write_silver(scd_df)
 
     current_count = scd_df.filter(pl.col("is_current")).shape[0]

@@ -158,8 +158,7 @@ def apply_scd2(today_df: pl.DataFrame, run_date: date) -> pl.DataFrame:
         changed_mask = pl.lit(False)
         for col in TRACK_COLS:
             changed_mask = changed_mask | (
-                pl.col(col).cast(pl.Utf8).fill_null("__NULL__")
-                != pl.col(f"{col}_new").cast(pl.Utf8).fill_null("__NULL__")
+                pl.col(col).cast(pl.Utf8).ne_missing(pl.col(f"{col}_new").cast(pl.Utf8))
             )
         changed_ids = set(
             merged.filter(changed_mask)["team_id"].to_list()
@@ -201,14 +200,12 @@ def write_silver(scd_df: pl.DataFrame) -> None:
     if HISTORY_FILE.exists():
         existing = pl.read_parquet(HISTORY_FILE)
         # Remove any rows from today's run (idempotency on re-run):
-        # drop all rows whose effective_from or effective_to matches today
-        # and re-append the fresh SCD output
+        # drop rows whose effective_from matches today and re-append the
+        # fresh SCD output (rows with effective_to == today from prior
+        # runs are legitimately closed and should be preserved)
         today = scd_df["effective_from"].max()
         if today is not None:
-            existing = existing.filter(
-                (pl.col("effective_from") != today)
-                & (pl.col("effective_to").is_null() | (pl.col("effective_to") != today))
-            )
+            existing = existing.filter(pl.col("effective_from") != today)
         combined = pl.concat([existing, scd_df], how="diagonal_relaxed")
     else:
         combined = scd_df
