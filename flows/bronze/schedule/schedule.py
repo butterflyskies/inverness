@@ -84,7 +84,7 @@ def flatten_schedule(schedule_data: dict) -> pl.DataFrame:
                         "rescheduled": False,
                     }
                 )
-            except (KeyError, TypeError) as exc:
+            except (KeyError, TypeError, AttributeError) as exc:
                 logger.warning("Skipping malformed game entry: %s", exc)
 
     schema = {
